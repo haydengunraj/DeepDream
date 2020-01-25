@@ -1,48 +1,49 @@
 import numpy as np
 import torch
-import torch.nn as nn
 import scipy.fftpack
 from torchvision import transforms, models
 from PIL import Image, ImageDraw
 
-from cnn.models import VGG19Finetune
+IMAGENET_NUM_CLASSES = 1000
 
 mean = np.array([0.485, 0.456, 0.406])
 std = np.array([0.229, 0.224, 0.225])
 
 
-def flatten_module(module, modules=[], max_depth=-1):
-    children = list(module.children())
-    if max_depth and len(children):
-        for child in children:
-            flatten_module(child, modules, max_depth-1)
+def register_hook(layer):
+    """Register a forward hook for a module"""
+    layer_output = []
+
+    def _hook(module, inputs, output):
+        layer_output.append(output)
+    handle = layer.register_forward_hook(_hook)
+    return layer_output, handle
+
+
+def load_model(arch, num_classes=1000, weights_path=None):
+    """Load a model and generate its layer dict"""
+    if weights_path is None:
+        num_classes = IMAGENET_NUM_CLASSES
+        pretrained = True
     else:
-        modules.append(module)
-    return modules
+        pretrained = False
+    model = getattr(models, arch)(num_classes=num_classes, pretrained=pretrained)
+    if weights_path is not None:
+        model.load_state_dict(torch.load(weights_path))
+    model.eval()
+    layer_dict, layer_list = get_layer_dict(model)
+    return model, layer_dict, layer_list
 
 
-def truncate_model(model, layer, max_depth=-1):
-    modules = flatten_module(model, max_depth=max_depth)
-    return nn.Sequential(*modules[:layer+1])
-
-
-def load_model(arch, layer=None, weights_path=None):
-    max_depth = -1
-    if arch == 'vgg16':
-        model = models.vgg16(pretrained=True)
-    elif arch == 'vgg19':
-        if weights_path is None:
-            model = models.vgg19(pretrained=True)
-        else:
-            model = VGG19Finetune(num_classes=365, weights_path=weights_path)
-    elif arch == 'googlenet':
-        model = models.googlenet(pretrained=True, transform_input=False)
-        max_depth = 1
-    elif arch == 'alexnet':
-        model = models.alexnet(pretrained=True)
-    if layer is not None:
-        model = truncate_model(model, layer, max_depth)
-    return model
+def get_layer_dict(model, indent='  '):
+    """Create a name: module dictionary and generate a list of strings for display"""
+    layer_dict = {}
+    layer_list = []
+    for name, module in model.named_modules():
+        if name:
+            layer_dict[name] = module
+            layer_list.append(indent*name.count('.') + name + ' ' + module.__class__.__name__)
+    return layer_dict, layer_list
 
 
 preprocess = transforms.Compose([
@@ -51,18 +52,36 @@ preprocess = transforms.Compose([
 ])
 
 
-def deprocess(image_np):
-    image_np = image_np.squeeze().transpose(1, 2, 0)
-    image_np = image_np * std.reshape((1, 1, 3)) + mean.reshape((1, 1, 3))
-    image_np = np.clip(image_np*255, 0, 255).astype(np.uint8)
-    return image_np
+def deprocess(image):
+    image = image.squeeze().transpose(1, 2, 0)
+    image = image * std.reshape((1, 1, 3)) + mean.reshape((1, 1, 3))
+    image = np.clip(image * 255, 0, 255).astype(np.uint8)
+    return image
 
 
-def clip(image_tensor):
+def clip(tensor):
     for c in range(3):
         m, s = mean[c], std[c]
-        image_tensor[0, c] = torch.clamp(image_tensor[0, c], -m / s, (1 - m) / s)
-    return image_tensor
+        tensor[0, c] = torch.clamp(tensor[0, c], -m / s, (1 - m) / s)
+    return tensor
+
+
+def tile(image, size):
+    nr = int(np.ceil(image.shape[0] / size))
+    nc = int(np.ceil(image.shape[1] / size))
+    h = int(np.ceil(image.shape[0] / nr))
+    w = int(np.ceil(image.shape[1] / nc))
+    tiles = []
+    for r in range(nr):
+        tiles.append([])
+        for c in range(nc):
+            crop = image[r * h:(r + 1) * h, c * w:(c + 1) * w, :]
+            tiles[-1].append(crop)
+    return tiles
+
+
+def untile(images):
+    return np.concatenate([np.concatenate(row, axis=1) for row in images], axis=0)
 
 
 def as_uint8(arr):
