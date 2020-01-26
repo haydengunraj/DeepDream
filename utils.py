@@ -47,12 +47,14 @@ def get_layer_dict(model, indent='  '):
 
 
 preprocess = transforms.Compose([
+    # Default preprocessing for PyTorch models
     transforms.ToTensor(),
     transforms.Normalize(mean, std)
 ])
 
 
 def deprocess(image):
+    """Convert back to uint8 image domain"""
     image = image.squeeze().transpose(1, 2, 0)
     image = image * std.reshape((1, 1, 3)) + mean.reshape((1, 1, 3))
     image = np.clip(image * 255, 0, 255).astype(np.uint8)
@@ -60,6 +62,7 @@ def deprocess(image):
 
 
 def clip(tensor):
+    """Clipping for model outputs"""
     for c in range(3):
         m, s = mean[c], std[c]
         tensor[0, c] = torch.clamp(tensor[0, c], -m / s, (1 - m) / s)
@@ -67,6 +70,7 @@ def clip(tensor):
 
 
 def tile(image, size):
+    """Divide an image into tiles"""
     nr = int(np.ceil(image.shape[0] / size))
     nc = int(np.ceil(image.shape[1] / size))
     h = int(np.ceil(image.shape[0] / nr))
@@ -81,18 +85,22 @@ def tile(image, size):
 
 
 def untile(images):
+    """Reconstruct an image from tiles"""
     return np.concatenate([np.concatenate(row, axis=1) for row in images], axis=0)
 
 
 def as_uint8(arr):
+    """Convert an array to full uint8 range"""
     return np.uint8(255*(arr - arr.min())/arr.ptp())
 
 
 def normalize(arr):
+    """Mean subtraction and std normalization"""
     return (arr - arr.mean()) / arr.std()
 
 
 def rgb_gaussian_random_field(size, alpha=4.0, eps=1e-10):
+    """Generate a random gaussian field image in RGB space"""
     k_idx = np.mgrid[:size, :size] - size//2
     k_idx = scipy.fftpack.fftshift(k_idx)
     amplitude = np.power(k_idx[0]*k_idx[0] + k_idx[1]*k_idx[1] + eps, -alpha/4.0)
@@ -106,13 +114,13 @@ def rgb_gaussian_random_field(size, alpha=4.0, eps=1e-10):
 
 
 def random_shapes(size, num_shapes=100, scales=6, factor=0.6, max_vertices=8, min_int=50):
+    """Generate an image of random polygons in RGB space"""
     shape_size = size
     vertices = np.random.choice(list(range(3, max_vertices+1)), num_shapes)
     indices = list(range(0, size))
     centers = np.random.choice(indices, num_shapes*2)
     shapes_per_scale = num_shapes // scales
     intensities = list(range(min_int, 256))
-
     image = Image.new('RGB', (size, size), 0)
     drawer = ImageDraw.Draw(image)
     scale_count = 1
