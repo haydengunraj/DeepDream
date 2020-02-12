@@ -12,9 +12,10 @@ def dream(image, model, output=None, iterations=20, lr=0.01):
     for i in range(iterations):
         model.zero_grad()
         out = model(image)
-        if output is not None:
-            out = output.pop()
-        loss = out.norm()
+        if output is None:
+            loss = out.norm()
+        else:
+            loss = sum(output.pop().norm() for _ in output)
         loss.backward()
         avg_grad = np.abs(image.grad.data.cpu().numpy()).mean()
         norm_lr = lr / avg_grad

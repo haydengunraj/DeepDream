@@ -70,14 +70,17 @@ if __name__ == '__main__':
     n_layers = len(layer_list)
     for i, layer_str in enumerate(layer_list):
         print(str(i).rjust(len(str(n_layers))) + '\t' + layer_str)
-    idx = input('\nSelect a layer by index: ')
-    if idx:
-        idx = int(idx)
-        if idx < 0 or idx >= n_layers:
-            raise ValueError('Layer index must be an integer in the range [0, {}]'.format(n_layers - 1))
-        desired_output, _ = register_hook(layer_dict[layer_list[idx].strip().split()[0]])
+    indices = input('\nSelect layers by index: ')
+    if indices:
+        indices = [int(idx.strip()) for idx in indices.split(',') if 0 <= int(idx) < n_layers]
+        desired_outputs = []
+        for idx in indices:
+            if idx < 0 or idx >= n_layers:
+                raise ValueError('Layer index must be an integer in the range [0, {}]'.format(n_layers - 1))
+            register_hook(layer_dict[layer_list[idx].strip().split()[0]], desired_outputs)
+        idx_str = '-'.join(str(idx) for idx in indices)
     else:
-        desired_output = None
+        raise ValueError('Must select one or more layers')
 
     # Extract deep dream image
     output_dir = 'outputs'
@@ -85,7 +88,7 @@ if __name__ == '__main__':
         dreamed_images = dream_progression(
             image,
             model,
-            output=desired_output,
+            output=desired_outputs,
             iterations=args.iterations,
             lr=args.lr,
             octave_scale=args.octave_scale,
@@ -94,11 +97,11 @@ if __name__ == '__main__':
         )
         dreamed_image = dreamed_images[-1]
         if args.image is None:
-            output_dir = os.path.join(output_dir, 'output_layer{}_iter{}_'.format(
-                args.at_layer, args.iterations) + datetime.now().strftime('%Y-%m-%d_%H.%M.%S'))
+            output_dir = os.path.join(output_dir, 'output_{}_layer{}_iter{}_'.format(
+                args.arch, idx_str, args.iterations) + datetime.now().strftime('%Y-%m-%d_%H.%M.%S'))
         else:
-            output_dir = os.path.join(output_dir, 'output_layer{}_iter{}_{}'.format(
-                args.at_layer, args.iterations, os.path.splitext(os.path.basename(args.image))[0]))
+            output_dir = os.path.join(output_dir, 'output_{}_layer{}_iter{}_{}'.format(
+                args.arch, idx_str, args.iterations, os.path.splitext(os.path.basename(args.image))[0]))
         os.makedirs(output_dir, exist_ok=True)
         for i in range(args.iterations+1):
             plt.imsave(os.path.join(output_dir, 'step{}.jpg'.format(i)), dreamed_images[i])
@@ -106,7 +109,7 @@ if __name__ == '__main__':
         dreamed_image = deep_dream(
             image,
             model,
-            output=desired_output,
+            output=desired_outputs,
             iterations=args.iterations,
             lr=args.lr,
             octave_scale=args.octave_scale,
@@ -115,11 +118,11 @@ if __name__ == '__main__':
         )
         if args.save:
             if args.image is None:
-                filename = os.path.join(output_dir, 'output_layer{}_iter{}_'.format(
-                    args.at_layer, args.iterations) + datetime.now().strftime('%Y-%m-%d_%H.%M.%S.jpg'))
+                filename = os.path.join(output_dir, 'output_{}_layer{}_iter{}_'.format(
+                    args.arch, idx_str, args.iterations) + datetime.now().strftime('%Y-%m-%d_%H.%M.%S.jpg'))
             else:
-                filename = os.path.join(output_dir, 'output_layer{}_iter{}_{}'.format(
-                    args.at_layer, args.iterations, os.path.basename(args.image)))
+                filename = os.path.join(output_dir, 'output_{}_layer{}_iter{}_{}'.format(
+                    args.arch, idx_str, args.iterations, os.path.basename(args.image)))
             os.makedirs(output_dir, exist_ok=True)
             plt.imsave(filename, dreamed_image)
 

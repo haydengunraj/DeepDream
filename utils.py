@@ -10,14 +10,12 @@ mean = np.array([0.485, 0.456, 0.406])
 std = np.array([0.229, 0.224, 0.225])
 
 
-def register_hook(layer):
+def register_hook(layer, layer_output_list):
     """Register a forward hook for a module"""
-    layer_output = []
-
     def _hook(module, inputs, output):
-        layer_output.append(output)
+        layer_output_list.append(output)
     handle = layer.register_forward_hook(_hook)
-    return layer_output, handle
+    return handle
 
 
 def load_model(arch, num_classes=1000, weights_path=None):
